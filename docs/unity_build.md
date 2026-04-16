@@ -1,0 +1,1 @@
+& "E:\unity_editor\6000.3.2f1\Editor\Unity.exe" -batchmode -nographics -projectPath "E:\xb_all\3deditor\unity-project" -executeMethod BuildScript.BuildWebGLDev -logFile - -quit
