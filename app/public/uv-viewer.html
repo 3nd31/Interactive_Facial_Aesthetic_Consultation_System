@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <title>FreeUV Mesh Viewer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 16px 20px;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #overlay h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #6ee7b7;
+            margin-bottom: 4px;
+        }
+
+        #overlay .stats {
+            font-size: 12px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        #drop-zone {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        #drop-zone.hidden {
+            display: none;
+        }
+
+        #drop-zone .inner {
+            text-align: center;
+            padding: 60px;
+            border: 2px dashed #444;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            transition: all 0.3s;
+        }
+
+        #drop-zone.dragover .inner {
+            border-color: #6ee7b7;
+            background: rgba(110, 231, 183, 0.1);
+        }
+
+        #drop-zone .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        #drop-zone .title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        #drop-zone .desc {
+            font-size: 14px;
+            color: #888;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 15;
+            display: none;
+        }
+
+        #loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: #6ee7b7;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 10;
+            display: flex;
+            gap: 8px;
+        }
+
+        #controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+        }
+
+        #controls button:hover {
+            background: rgba(110, 231, 183, 0.2);
+            border-color: #6ee7b7;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <div id="overlay">
+            <h1>FreeUV Mesh Viewer</h1>
+            <div class="stats" id="stats">拖拽 UV 纹理图到页面上</div>
+        </div>
+
+        <div id="drop-zone">
+            <div class="inner">
+                <div class="icon">🎨</div>
+                <div class="title">拖拽 UV 纹理图到此处</div>
+                <div class="desc">支持 PNG / JPG 格式的面部 UV 贴图</div>
+            </div>
+        </div>
+
+        <div id="loading">
+            <div class="spinner"></div>
+            <div style="text-align:center;color:#888;">加载中...</div>
+        </div>
+
+        <div id="controls" style="display:none;">
+            <button onclick="resetCamera()">🔄 重置视角</button>
+            <button onclick="toggleWireframe()">📐 线框</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+{
+    "imports": {
+        "three": "/node_modules/three/build/three.module.js",
+        "three/addons/": "/node_modules/three/examples/jsm/"
+    }
+}
+</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Scene setup ---
+        const container = document.getElementById('container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100);
+        camera.position.set(0, 0, 0.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.rotateSpeed = 0.5;
+        controls.target.set(0, 0, 0);
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        keyLight.position.set(1, 1, 2);
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+        fillLight.position.set(-1, 0.5, -1);
+        scene.add(fillLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffffff, 0.2);
+        rimLight.position.set(0, -1, -2);
+        scene.add(rimLight);
+
+        // --- Head mesh generation (FLAME-like topology) ---
+        let headMesh = null;
+        let wireframeMode = false;
+
+        function createHeadMesh(texture) {
+            // Generate a UV-mapped head shape (approximating FLAME mesh topology)
+            const nLat = 48;
+            const nLon = 64;
+            const geometry = new THREE.BufferGeometry();
+
+            const vertices = [];
+            const uvs = [];
+            const indices = [];
+
+            for (let i = 0; i <= nLat; i++) {
+                const lat = (Math.PI * i / nLat) - Math.PI / 2;
+                const v = i / nLat;
+
+                for (let j = 0; j <= nLon; j++) {
+                    const lon = (2 * Math.PI * j / nLon);
+                    const u = j / nLon;
+
+                    // Head-shaped deformation (narrower at chin, wider at cheeks)
+                    let radius = 0.08;
+                    const heightFactor = Math.sin(lat);
+
+                    // Chin narrowing
+                    if (heightFactor < -0.3) {
+                        radius *= 0.7 + 0.3 * (1 + heightFactor / 0.7);
+                    }
+                    // Forehead slight narrowing
+                    if (heightFactor > 0.6) {
+                        radius *= 0.95;
+                    }
+                    // Nose protrusion (front, middle height)
+                    const frontFactor = Math.cos(lon);
+                    if (frontFactor > 0.7 && Math.abs(heightFactor) < 0.15) {
+                        radius *= 1.0 + 0.15 * (frontFactor - 0.7) / 0.3;
+                    }
+
+                    const x = Math.cos(lat) * Math.cos(lon) * radius;
+                    const y = Math.sin(lat) * 0.12; // Elongated vertically
+                    const z = Math.cos(lat) * Math.sin(lon) * radius;
+
+                    vertices.push(x, y, z);
+                    uvs.push(u, 1 - v);
+                }
+            }
+
+            for (let i = 0; i < nLat; i++) {
+                for (let j = 0; j < nLon; j++) {
+                    const a = i * (nLon + 1) + j;
+                    const b = a + 1;
+                    const c = a + (nLon + 1);
+                    const d = c + 1;
+                    indices.push(a, b, d);
+                    indices.push(a, d, c);
+                }
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: 0.6,
+                metalness: 0.05,
+                side: THREE.DoubleSide,
+            });
+
+            if (headMesh) {
+                scene.remove(headMesh);
+                headMesh.geometry.dispose();
+                headMesh.material.dispose();
+            }
+
+            headMesh = new THREE.Mesh(geometry, material);
+            scene.add(headMesh);
+
+            // Auto-fit camera
+            const box = new THREE.Box3().setFromObject(headMesh);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+
+            controls.target.copy(center);
+            camera.position.set(center.x, center.y, center.z + maxDim * 2.5);
+            controls.update();
+
+            document.getElementById('stats').textContent =
+                `Vertices: ${vertices.length / 3} | Faces: ${indices.length / 3} | Texture: ${texture.image.width}×${texture.image.height}`;
+            document.getElementById('controls').style.display = 'flex';
+        }
+
+        // --- Drag & drop ---
+        const dropZone = document.getElementById('drop-zone');
+
+        ['dragenter', 'dragover'].forEach(evt => {
+            document.addEventListener(evt, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(evt => {
+            document.addEventListener(evt, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            });
+        });
+
+        document.addEventListener('drop', (e) => {
+            const file = e.dataTransfer?.files[0];
+            if (!file || !file.type.startsWith('image/')) return;
+            loadUVTexture(file);
+        });
+
+        // Also support click to upload
+        dropZone.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = () => {
+                if (input.files[0]) loadUVTexture(input.files[0]);
+            };
+            input.click();
+        });
+
+        // Auto-load from URL parameter
+        const params = new URLSearchParams(location.search);
+        const uvUrl = params.get('uv');
+        if (uvUrl) {
+            dropZone.classList.add('hidden');
+            document.getElementById('loading').classList.add('active');
+            const loader = new THREE.TextureLoader();
+            loader.load(uvUrl, (texture) => {
+                texture.colorSpace = THREE.SRGBColorSpace;
+                texture.flipY = true;
+                createHeadMesh(texture);
+                document.getElementById('loading').classList.remove('active');
+            });
+        }
+
+        function loadUVTexture(file) {
+            dropZone.classList.add('hidden');
+            document.getElementById('loading').classList.add('active');
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const texture = new THREE.Texture(img);
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                    texture.flipY = true;
+                    texture.needsUpdate = true;
+                    createHeadMesh(texture);
+                    document.getElementById('loading').classList.remove('active');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- Controls ---
+        window.resetCamera = () => {
+            if (!headMesh) return;
+            const box = new THREE.Box3().setFromObject(headMesh);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            controls.target.copy(center);
+            camera.position.set(center.x, center.y, center.z + maxDim * 2.5);
+            controls.update();
+        };
+
+        window.toggleWireframe = () => {
+            if (!headMesh) return;
+            wireframeMode = !wireframeMode;
+            headMesh.material.wireframe = wireframeMode;
+        };
+
+        // --- Resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- Render loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+
+</html>

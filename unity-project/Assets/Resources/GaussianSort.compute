@@ -1,0 +1,73 @@
+// Gaussian Splatting Sort Compute Shader
+// GPU depth computation + bitonic sort
+
+#pragma kernel ComputeDepth
+#pragma kernel BitonicSort
+
+struct GaussianData
+{
+    float3 position;
+    float4 color;
+    float2 scale;
+};
+
+RWStructuredBuffer<GaussianData> _Gaussians;
+RWStructuredBuffer<float> _Depths;
+RWStructuredBuffer<uint> _Indices;
+
+int _Count;
+int _PaddedCount;
+float3 _CamPos;
+float3 _CamFwd;
+int _K;
+int _J;
+
+// Compute depth along camera forward
+[numthreads(256, 1, 1)]
+void ComputeDepth(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= (uint)_PaddedCount) return;
+
+    _Indices[idx] = idx;
+
+    if (idx < (uint)_Count)
+    {
+        float3 toGaussian = _Gaussians[idx].position - _CamPos;
+        _Depths[idx] = dot(toGaussian, _CamFwd);
+    }
+    else
+    {
+        _Depths[idx] = 1e30; // Push invalid entries to end
+    }
+}
+
+// Bitonic sort step — sort front-to-back (ascending depth)
+[numthreads(256, 1, 1)]
+void BitonicSort(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= (uint)_PaddedCount) return;
+
+    uint ixj = idx ^ (uint)_J;
+
+    if (ixj <= idx) return;
+
+    float depthA = _Depths[idx];
+    float depthB = _Depths[ixj];
+
+    bool ascending = ((idx & (uint)_K) == 0);
+    bool shouldSwap = ascending ? (depthA > depthB) : (depthA < depthB);
+
+    if (shouldSwap)
+    {
+        // Swap depths
+        _Depths[idx] = depthB;
+        _Depths[ixj] = depthA;
+
+        // Swap indices
+        uint tmpIdx = _Indices[idx];
+        _Indices[idx] = _Indices[ixj];
+        _Indices[ixj] = tmpIdx;
+    }
+}

@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <title>FaceVR — 面部整形模拟器</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="FaceVR 面部整形模拟器 — 基于FreeUV的实时3D面部编辑工具">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #13131a;
+            --bg-panel: #1a1a24;
+            --bg-hover: #22222e;
+            --bg-active: #2a2a3a;
+            --border: #2a2a3a;
+            --text-primary: #e8e8ee;
+            --text-secondary: #8888a0;
+            --text-muted: #555566;
+            --accent: #6ee7b7;
+            --accent-dim: rgba(110, 231, 183, 0.15);
+            --accent-glow: rgba(110, 231, 183, 0.3);
+            --danger: #f87171;
+            --warning: #fbbf24;
+            --radius: 10px;
+            --panel-width: 280px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* === TOOLBAR === */
+        #toolbar {
+            height: 48px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 8px;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        #toolbar .brand {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--accent);
+            margin-right: 24px;
+            letter-spacing: -0.5px;
+        }
+
+        .tb-btn {
+            background: none;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s;
+        }
+
+        .tb-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .tb-btn:active {
+            background: var(--bg-active);
+        }
+
+        .tb-btn.active {
+            background: var(--accent-dim);
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .tb-btn:disabled {
+            opacity: 0.3;
+            cursor: default;
+        }
+
+        .tb-sep {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+            margin: 0 4px;
+        }
+
+        .tb-spacer {
+            flex: 1;
+        }
+
+        /* === MAIN LAYOUT === */
+        #main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* === LEFT PANEL: Surgery Items === */
+        #left-panel {
+            width: var(--panel-width);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
+
+        .panel-header {
+            padding: 12px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .region-item {
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border-left: 3px solid transparent;
+        }
+
+        .region-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .region-item.active {
+            background: var(--accent-dim);
+            border-left-color: var(--accent);
+        }
+
+        .region-item .icon {
+            font-size: 18px;
+        }
+
+        .region-item .name {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .region-item .name-zh {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .region-item .badge {
+            margin-left: auto;
+            background: var(--accent);
+            color: #000;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .region-item.modified .badge {
+            display: block;
+        }
+
+        /* Presets section */
+        .preset-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            padding: 8px 12px;
+        }
+
+        .preset-btn {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            text-align: center;
+            transition: all 0.15s;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .preset-btn .icon {
+            font-size: 16px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* === VIEWPORT === */
+        #viewport {
+            flex: 1;
+            position: relative;
+            background: var(--bg-primary);
+            cursor: grab;
+        }
+
+        #viewport:active {
+            cursor: grabbing;
+        }
+
+        #viewport canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Comparison overlay */
+        #comparison-slider {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--accent);
+            cursor: ew-resize;
+            z-index: 10;
+            display: none;
+        }
+
+        #comparison-slider::before {
+            content: '◀▶';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--accent);
+            color: #000;
+            font-size: 10px;
+            padding: 4px 6px;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+
+        .comparison-label {
+            position: absolute;
+            top: 12px;
+            padding: 4px 12px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 5;
+            display: none;
+        }
+
+        #label-before {
+            left: 12px;
+            color: var(--text-secondary);
+        }
+
+        #label-after {
+            right: 12px;
+            color: var(--accent);
+        }
+
+        /* Drop zone overlay */
+        #upload-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        #upload-overlay.hidden {
+            display: none;
+        }
+
+        .upload-inner {
+            text-align: center;
+            padding: 48px 64px;
+            border: 2px dashed var(--border);
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            transition: all 0.2s;
+        }
+
+        .upload-inner:hover {
+            border-color: var(--accent);
+        }
+
+        .upload-inner .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .upload-inner h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .upload-inner p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* === RIGHT PANEL: Sliders === */
+        #right-panel {
+            width: var(--panel-width);
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
+
+        .slider-group {
+            padding: 8px 16px;
+        }
+
+        .slider-item {
+            margin-bottom: 12px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .slider-label .name {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .slider-label .value {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+
+        .slider-track {
+            position: relative;
+            height: 6px;
+            background: var(--bg-active);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .slider-fill {
+            position: absolute;
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.05s;
+        }
+
+        .slider-thumb {
+            position: absolute;
+            top: 50%;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border: 2px solid var(--bg-secondary);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            transition: box-shadow 0.15s;
+        }
+
+        .slider-thumb:hover {
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        .slider-thumb:active {
+            cursor: grabbing;
+        }
+
+        .reset-btn {
+            width: 100%;
+            padding: 8px;
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            margin-top: 8px;
+            transition: all 0.15s;
+        }
+
+        .reset-btn:hover {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        /* === STATUS BAR === */
+        #statusbar {
+            height: 28px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 16px;
+            font-size: 11px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        #statusbar .status-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        #statusbar .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        #statusbar .dot.green {
+            background: #4ade80;
+        }
+
+        #statusbar .dot.yellow {
+            background: #fbbf24;
+        }
+
+        #statusbar .dot.red {
+            background: #f87171;
+        }
+
+        /* Loading spinner */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- TOOLBAR -->
+    <div id="toolbar">
+        <span class="brand">FaceVR</span>
+        <button class="tb-btn" id="btn-upload" title="上传照片">📷 上传</button>
+        <div class="tb-sep"></div>
+        <button class="tb-btn" id="btn-undo" disabled title="撤销 (Ctrl+Z)">↩ 撤销</button>
+        <button class="tb-btn" id="btn-redo" disabled title="重做 (Ctrl+Y)">↪ 重做</button>
+        <button class="tb-btn" id="btn-reset" title="重置所有">🔄 重置</button>
+        <div class="tb-sep"></div>
+        <button class="tb-btn" id="btn-compare" title="前后对比">👁 对比</button>
+        <button class="tb-btn" id="btn-symmetry" class="active" title="对称模式">🔗 对称</button>
+        <button class="tb-btn" id="btn-linked" title="切换联动/独立 (L)">🔓 独立</button>
+        <div class="tb-spacer"></div>
+        <button class="tb-btn" id="btn-screenshot" title="截图">📸</button>
+        <button class="tb-btn" id="btn-save" title="保存方案">💾 保存</button>
+        <button class="tb-btn" id="btn-export" title="导出">📤 导出</button>
+    </div>
+
+    <!-- MAIN -->
+    <div id="main">
+        <!-- LEFT: Surgery Regions + Presets -->
+        <div id="left-panel">
+            <div class="panel-header">手术项目</div>
+            <div id="region-list"></div>
+            <div class="panel-header" style="margin-top:auto;">一键预设</div>
+            <div id="preset-grid" class="preset-grid"></div>
+        </div>
+
+        <!-- CENTER: 3D Viewport -->
+        <div id="viewport">
+            <div id="upload-overlay">
+                <div class="upload-inner" id="drop-area">
+                    <div class="icon">🎨</div>
+                    <h2>上传面部 UV 纹理</h2>
+                    <p>拖拽 UV 图到此处，或点击选择文件</p>
+                </div>
+            </div>
+            <div class="loading-overlay" id="loading">
+                <div style="text-align:center;">
+                    <div class="loading-spinner"></div>
+                    <div style="margin-top:12px;color:var(--text-secondary);font-size:13px;" id="loading-text">加载中...
+                    </div>
+                </div>
+            </div>
+            <div id="comparison-slider"></div>
+            <div class="comparison-label" id="label-before">术前</div>
+            <div class="comparison-label" id="label-after">术后</div>
+        </div>
+
+        <!-- RIGHT: Parameter Sliders -->
+        <div id="right-panel">
+            <div class="panel-header">参数调节</div>
+            <div id="slider-container" class="slider-group">
+                <p style="color:var(--text-muted);font-size:12px;padding:16px 0;">← 点击左侧面部区域开始调整</p>
+            </div>
+            <div style="padding: 8px 16px;">
+                <button class="reset-btn" id="btn-reset-region">🔄 重置当前区域</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div id="statusbar">
+        <div class="status-item"><span class="dot green" id="dot-server"></span> <span id="server-status">就绪</span>
+        </div>
+        <div class="status-item" id="fps-display">FPS: --</div>
+        <div class="status-item" id="deform-time">变形: --ms</div>
+        <div class="status-item tb-spacer"></div>
+        <div class="status-item" id="mode-display">FreeUV Pipeline</div>
+    </div>
+
+    <script type="importmap">
+{
+    "imports": {
+        "three": "/node_modules/three/build/three.module.js",
+        "three/addons/": "/node_modules/three/examples/jsm/"
+    }
+}
+</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // =============================================
+        // SURGERY CONTROLLER (inline for standalone)
+        // =============================================
+
+        const REGIONS = [
+            {
+                id: 'nose', name: 'Nose', nameZh: '鼻部', icon: '👃', params: [
+                    { id: 'nose-bridge-height', nameZh: '鼻梁高度', min: -2, max: 2, value: 0, fm: [{ i: 0, w: 0.8 }, { i: 5, w: 0.3 }] },
+                    { id: 'nose-tip-up', nameZh: '鼻尖上翘', min: -2, max: 2, value: 0, fm: [{ i: 1, w: 0.6 }, { i: 12, w: 0.4 }] },
+                    { id: 'nose-width', nameZh: '鼻翼宽度', min: -2, max: 2, value: 0, fm: [{ i: 3, w: 0.7 }, { i: 8, w: 0.3 }] },
+                    { id: 'nose-length', nameZh: '鼻部长度', min: -2, max: 2, value: 0, fm: [{ i: 2, w: 0.5 }, { i: 6, w: 0.5 }] },
+                ]
+            },
+            {
+                id: 'jaw', name: 'Jawline', nameZh: '下颌线', icon: '🫧', params: [
+                    { id: 'jaw-width', nameZh: '下颌宽度', min: -2, max: 2, value: 0, fm: [{ i: 4, w: 0.9 }, { i: 15, w: 0.2 }] },
+                    { id: 'jaw-angle', nameZh: '下颌角度', min: -2, max: 2, value: 0, fm: [{ i: 7, w: 0.7 }, { i: 18, w: 0.3 }] },
+                    { id: 'jaw-sharpness', nameZh: '下颌锐度', min: -2, max: 2, value: 0, fm: [{ i: 9, w: 0.6 }, { i: 20, w: 0.4 }] },
+                ]
+            },
+            {
+                id: 'chin', name: 'Chin', nameZh: '下巴', icon: '🔻', params: [
+                    { id: 'chin-length', nameZh: '下巴长度', min: -2, max: 2, value: 0, fm: [{ i: 10, w: 0.8 }, { i: 22, w: 0.3 }] },
+                    { id: 'chin-protrusion', nameZh: '下巴前突', min: -2, max: 2, value: 0, fm: [{ i: 11, w: 0.7 }, { i: 25, w: 0.3 }] },
+                    { id: 'chin-width', nameZh: '下巴宽度', min: -2, max: 2, value: 0, fm: [{ i: 13, w: 0.6 }, { i: 28, w: 0.4 }] },
+                ]
+            },
+            {
+                id: 'cheek', name: 'Cheekbone', nameZh: '颧骨', icon: '✨', params: [
+                    { id: 'cheek-height', nameZh: '颧骨高度', min: -2, max: 2, value: 0, fm: [{ i: 14, w: 0.7 }, { i: 30, w: 0.3 }] },
+                    { id: 'cheek-width', nameZh: '颧骨宽度', min: -2, max: 2, value: 0, fm: [{ i: 16, w: 0.8 }] },
+                    { id: 'cheek-fullness', nameZh: '面颊丰满', min: -2, max: 2, value: 0, fm: [{ i: 17, w: 0.6 }, { i: 32, w: 0.4 }] },
+                ]
+            },
+            {
+                id: 'forehead', name: 'Forehead', nameZh: '额头', icon: '🧠', params: [
+                    { id: 'forehead-height', nameZh: '额头高度', min: -2, max: 2, value: 0, fm: [{ i: 19, w: 0.7 }, { i: 35, w: 0.3 }] },
+                    { id: 'forehead-width', nameZh: '额头宽度', min: -2, max: 2, value: 0, fm: [{ i: 21, w: 0.8 }] },
+                ]
+            },
+            {
+                id: 'eye', name: 'Eye Area', nameZh: '眼部', icon: '👁️', params: [
+                    { id: 'eye-size', nameZh: '眼睛大小', min: -2, max: 2, value: 0, fm: [{ i: 23, w: 0.6 }, { i: 38, w: 0.4 }] },
+                    { id: 'eye-spacing', nameZh: '眼间距', min: -2, max: 2, value: 0, fm: [{ i: 24, w: 0.7 }] },
+                    { id: 'eye-tilt', nameZh: '眼角倾斜', min: -2, max: 2, value: 0, fm: [{ i: 26, w: 0.5 }, { i: 40, w: 0.5 }] },
+                ]
+            },
+            {
+                id: 'lip', name: 'Lips', nameZh: '唇部', icon: '💋', params: [
+                    { id: 'lip-fullness', nameZh: '唇部丰满', min: -2, max: 2, value: 0, fm: [{ i: 27, w: 0.7 }, { i: 42, w: 0.3 }] },
+                    { id: 'lip-width', nameZh: '嘴唇宽度', min: -2, max: 2, value: 0, fm: [{ i: 29, w: 0.6 }] },
+                    { id: 'lip-cupid-bow', nameZh: '唇弓弧度', min: -2, max: 2, value: 0, fm: [{ i: 31, w: 0.5 }, { i: 45, w: 0.5 }] },
+                ]
+            },
+        ];
+
+        const PRESETS = [
+            { id: 'korean-nose', nameZh: '韩式美鼻', icon: '🇰🇷', values: { 'nose-bridge-height': 1.2, 'nose-tip-up': 0.6, 'nose-width': -0.8, 'nose-length': -0.3 } },
+            { id: 'natural-nose', nameZh: '自然鼻型', icon: '🌿', values: { 'nose-bridge-height': 0.5, 'nose-tip-up': 0.2, 'nose-width': -0.3 } },
+            { id: 'v-line', nameZh: 'V脸线条', icon: '💎', values: { 'jaw-width': -1.5, 'jaw-angle': -0.8, 'jaw-sharpness': 1.0, 'chin-length': 0.3, 'chin-width': -0.8 } },
+            { id: 'baby-face', nameZh: '减龄幼态', icon: '👶', values: { 'cheek-fullness': 0.8, 'chin-length': -0.5, 'jaw-width': -0.6, 'eye-size': 0.7 } },
+            { id: 'sharp', nameZh: '立体轮廓', icon: '🗿', values: { 'nose-bridge-height': 1.0, 'cheek-height': 0.8, 'jaw-sharpness': 0.6, 'chin-protrusion': 0.4 } },
+            { id: 'feminine', nameZh: '柔美女性', icon: '🌸', values: { 'jaw-width': -1.0, 'chin-width': -0.6, 'cheek-fullness': 0.4, 'lip-fullness': 0.5, 'eye-size': 0.4 } },
+        ];
+
+        let shapeParams = new Array(200).fill(0);
+        let baseShapeParams = new Array(200).fill(0);
+        let undoStack = [], redoStack = [];
+        let activeRegionId = null;
+        let comparing = false;
+        let symmetry = true;
+        let linkedMode = false; // false = independent (region-isolated), true = linked (global)
+
+        function getParam(id) {
+            for (const r of REGIONS) { const p = r.params.find(p => p.id === id); if (p) return p; }
+            return null;
+        }
+
+        function rebuildShapeParams() {
+            shapeParams = [...baseShapeParams];
+            for (const r of REGIONS) {
+                for (const p of r.params) {
+                    if (p.value !== 0) {
+                        for (const m of p.fm) {
+                            shapeParams[m.i] += p.value * m.w;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build per-region shape arrays for region-isolated deformation
+        function buildRegionShapeArrays() {
+            const result = {};
+            for (const r of REGIONS) {
+                const regionParams = new Array(200).fill(0);
+                let hasNonZero = false;
+                for (const p of r.params) {
+                    if (p.value !== 0) {
+                        for (const m of p.fm) {
+                            regionParams[m.i] += p.value * m.w;
+                            hasNonZero = true;
+                        }
+                    }
+                }
+                if (hasNonZero) result[r.id] = regionParams;
+            }
+            return result;
+        }
+
+        function pushUndo() {
+            undoStack.push(REGIONS.map(r => r.params.map(p => p.value)));
+            if (undoStack.length > 50) undoStack.shift();
+            redoStack = [];
+            updateUndoButtons();
+        }
+
+        function popUndo() {
+            if (!undoStack.length) return;
+            redoStack.push(REGIONS.map(r => r.params.map(p => p.value)));
+            const state = undoStack.pop();
+            REGIONS.forEach((r, ri) => r.params.forEach((p, pi) => p.value = state[ri][pi]));
+            rebuildShapeParams();
+            applyDeform();
+            updateSliders();
+            updateRegionBadges();
+            updateUndoButtons();
+        }
+
+        function popRedo() {
+            if (!redoStack.length) return;
+            undoStack.push(REGIONS.map(r => r.params.map(p => p.value)));
+            const state = redoStack.pop();
+            REGIONS.forEach((r, ri) => r.params.forEach((p, pi) => p.value = state[ri][pi]));
+            rebuildShapeParams();
+            applyDeform();
+            updateSliders();
+            updateRegionBadges();
+            updateUndoButtons();
+        }
+
+        function updateUndoButtons() {
+            document.getElementById('btn-undo').disabled = !undoStack.length;
+            document.getElementById('btn-redo').disabled = !redoStack.length;
+        }
+
+        // =============================================
+        // THREE.JS SCENE
+        // =============================================
+
+        const viewport = document.getElementById('viewport');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111116);
+
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
+        camera.position.set(0, 0, 0.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        viewport.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.rotateSpeed = 0.5;
+        controls.target.set(0, 0, 0);
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        keyLight.position.set(1, 1, 2);
+        scene.add(keyLight);
+        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+        fillLight.position.set(-1, 0.5, -1);
+        scene.add(fillLight);
+
+        let headMesh = null;
+        let originalPositions = null; // For comparison mode
+
+        function createHeadMesh(texture) {
+            const nLat = 48, nLon = 64;
+            const geo = new THREE.BufferGeometry();
+            const verts = [], uvs = [], idx = [];
+
+            for (let i = 0; i <= nLat; i++) {
+                const lat = Math.PI * i / nLat - Math.PI / 2, v = i / nLat;
+                for (let j = 0; j <= nLon; j++) {
+                    const lon = 2 * Math.PI * j / nLon, u = j / nLon;
+                    let r = 0.08;
+                    const hf = Math.sin(lat);
+                    if (hf < -0.3) r *= 0.7 + 0.3 * (1 + hf / 0.7);
+                    if (hf > 0.6) r *= 0.95;
+                    const ff = Math.cos(lon);
+                    if (ff > 0.7 && Math.abs(hf) < 0.15) r *= 1 + 0.15 * (ff - 0.7) / 0.3;
+                    verts.push(Math.cos(lat) * Math.cos(lon) * r, Math.sin(lat) * 0.12, Math.cos(lat) * Math.sin(lon) * r);
+                    uvs.push(u, 1 - v);
+                }
+            }
+            for (let i = 0; i < nLat; i++)
+                for (let j = 0; j < nLon; j++) {
+                    const a = i * (nLon + 1) + j, b = a + 1, c = a + nLon + 1, d = c + 1;
+                    idx.push(a, b, d, a, d, c);
+                }
+
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geo.setIndex(idx);
+            geo.computeVertexNormals();
+
+            const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide });
+
+            if (headMesh) { scene.remove(headMesh); headMesh.geometry.dispose(); headMesh.material.dispose(); }
+            headMesh = new THREE.Mesh(geo, mat);
+            scene.add(headMesh);
+
+            originalPositions = Float32Array.from(geo.attributes.position.array);
+
+            // Auto-fit
+            const box = new THREE.Box3().setFromObject(headMesh);
+            const c2 = box.getCenter(new THREE.Vector3());
+            const s = box.getSize(new THREE.Vector3());
+            controls.target.copy(c2);
+            camera.position.set(c2.x, c2.y, c2.z + Math.max(s.x, s.y, s.z) * 2.5);
+            controls.update();
+        }
+
+        // Simulated deformation (locally deform the procedural mesh based on shape params)
+        function applyDeform() {
+            if (!headMesh || !originalPositions) return;
+            const t0 = performance.now();
+            const pos = headMesh.geometry.attributes.position;
+            const arr = pos.array;
+            const orig = originalPositions;
+
+            for (let i = 0; i < arr.length; i += 3) {
+                let dx = 0, dy = 0, dz = 0;
+                const ox = orig[i], oy = orig[i + 1], oz = orig[i + 2];
+                const h = oy / 0.12; // normalized height [-1, 1]
+
+                // Apply shape param effects based on vertex position
+                // Nose area (front, middle)
+                if (oz > 0.04 && Math.abs(h) < 0.2) {
+                    const noseFactor = Math.max(0, (oz - 0.04) / 0.04);
+                    dz += shapeParams[0] * 0.003 * noseFactor; // bridge height
+                    dy += shapeParams[1] * 0.002 * noseFactor; // tip up
+                    dx += shapeParams[3] * 0.003 * noseFactor; // width
+                }
+                // Jaw area (bottom sides)
+                if (h < -0.3) {
+                    const jawFactor = Math.max(0, (-h - 0.3) / 0.4);
+                    dx += Math.sign(ox) * shapeParams[4] * 0.004 * jawFactor; // jaw width
+                    dy += shapeParams[7] * 0.002 * jawFactor; // jaw angle
+                }
+                // Chin (bottom center)
+                if (h < -0.5 && Math.abs(ox) < 0.03) {
+                    const chinFactor = Math.max(0, (-h - 0.5) / 0.3);
+                    dy -= shapeParams[10] * 0.003 * chinFactor; // chin length
+                    dz += shapeParams[11] * 0.002 * chinFactor; // protrusion
+                }
+                // Cheeks (mid sides)
+                if (Math.abs(h) < 0.3 && Math.abs(ox) > 0.04) {
+                    const cheekFactor = 1 - Math.abs(h) / 0.3;
+                    dx += Math.sign(ox) * shapeParams[16] * 0.003 * cheekFactor;
+                    dy += shapeParams[14] * 0.002 * cheekFactor;
+                }
+                // Forehead (top)
+                if (h > 0.5) {
+                    const fhFactor = (h - 0.5) / 0.5;
+                    dy += shapeParams[19] * 0.003 * fhFactor;
+                    dx += Math.sign(ox) * shapeParams[21] * 0.002 * fhFactor;
+                }
+                // Eyes
+                if (h > 0 && h < 0.4 && Math.abs(ox) > 0.02 && Math.abs(ox) < 0.06) {
+                    dx += Math.sign(ox) * shapeParams[24] * 0.002;
+                }
+                // Lips
+                if (h > -0.4 && h < -0.1 && Math.abs(ox) < 0.04 && oz > 0.03) {
+                    dz += shapeParams[27] * 0.002;
+                    dx += Math.sign(ox) * shapeParams[29] * 0.002;
+                }
+
+                arr[i] = orig[i] + dx;
+                arr[i + 1] = orig[i + 1] + dy;
+                arr[i + 2] = orig[i + 2] + dz;
+            }
+
+            pos.needsUpdate = true;
+            headMesh.geometry.computeVertexNormals();
+
+            const dt = performance.now() - t0;
+            document.getElementById('deform-time').textContent = `变形: ${dt.toFixed(1)}ms`;
+        }
+
+        // =============================================
+        // UI LOGIC
+        // =============================================
+
+        function buildRegionList() {
+            const list = document.getElementById('region-list');
+            list.innerHTML = '';
+            for (const r of REGIONS) {
+                const el = document.createElement('div');
+                el.className = 'region-item';
+                el.dataset.id = r.id;
+                el.innerHTML = `<span class="icon">${r.icon}</span><div><div class="name">${r.nameZh}</div></div><span class="badge">✎</span>`;
+                el.addEventListener('click', () => selectRegion(r.id));
+                list.appendChild(el);
+            }
+        }
+
+        function selectRegion(regionId) {
+            activeRegionId = regionId;
+            document.querySelectorAll('.region-item').forEach(el => el.classList.toggle('active', el.dataset.id === regionId));
+            buildSliders(regionId);
+        }
+
+        function buildSliders(regionId) {
+            const container = document.getElementById('slider-container');
+            const region = REGIONS.find(r => r.id === regionId);
+            if (!region) { container.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:16px 0;">← 点击左侧区域</p>'; return; }
+
+            container.innerHTML = '';
+            for (const param of region.params) {
+                const item = document.createElement('div');
+                item.className = 'slider-item';
+                item.dataset.paramId = param.id;
+
+                const range = param.max - param.min;
+                const pct = ((param.value - param.min) / range) * 100;
+                const zeroPct = ((0 - param.min) / range) * 100;
+                const fillLeft = Math.min(pct, zeroPct);
+                const fillWidth = Math.abs(pct - zeroPct);
+
+                item.innerHTML = `
+            <div class="slider-label">
+                <span class="name">${param.nameZh}</span>
+                <span class="value">${param.value.toFixed(2)}</span>
+            </div>
+            <div class="slider-track" data-param-id="${param.id}">
+                <div class="slider-fill" style="left:${fillLeft}%;width:${fillWidth}%"></div>
+                <div class="slider-thumb" style="left:${pct}%"></div>
+            </div>`;
+
+                const track = item.querySelector('.slider-track');
+                setupSlider(track, param);
+                item.querySelector('.slider-label').addEventListener('dblclick', () => {
+                    pushUndo();
+                    param.value = 0;
+                    rebuildShapeParams();
+                    applyDeform();
+                    updateSliders();
+                    updateRegionBadges();
+                });
+                container.appendChild(item);
+            }
+        }
+
+        function setupSlider(track, param) {
+            let dragging = false;
+            const update = (clientX) => {
+                const rect = track.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                param.value = param.min + pct * (param.max - param.min);
+                param.value = Math.round(param.value * 100) / 100;
+                rebuildShapeParams();
+                applyDeform();
+                updateSliders();
+                updateRegionBadges();
+            };
+
+            track.addEventListener('mousedown', (e) => {
+                dragging = true;
+                pushUndo();
+                update(e.clientX);
+                const onMove = (e2) => { if (dragging) update(e2.clientX); };
+                const onUp = () => { dragging = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            });
+        }
+
+        function updateSliders() {
+            if (!activeRegionId) return;
+            const region = REGIONS.find(r => r.id === activeRegionId);
+            if (!region) return;
+            for (const param of region.params) {
+                const item = document.querySelector(`[data-param-id="${param.id}"]`);
+                if (!item) continue;
+                const range = param.max - param.min;
+                const pct = ((param.value - param.min) / range) * 100;
+                const zeroPct = ((0 - param.min) / range) * 100;
+                const thumb = item.querySelector('.slider-thumb');
+                const fill = item.querySelector('.slider-fill');
+                const valEl = item.closest('.slider-item')?.querySelector('.value');
+                if (thumb) thumb.style.left = pct + '%';
+                if (fill) {
+                    fill.style.left = Math.min(pct, zeroPct) + '%';
+                    fill.style.width = Math.abs(pct - zeroPct) + '%';
+                }
+                if (valEl) valEl.textContent = param.value.toFixed(2);
+            }
+        }
+
+        function updateRegionBadges() {
+            for (const r of REGIONS) {
+                const el = document.querySelector(`.region-item[data-id="${r.id}"]`);
+                if (el) {
+                    const modified = r.params.some(p => Math.abs(p.value) > 0.01);
+                    el.classList.toggle('modified', modified);
+                }
+            }
+        }
+
+        function buildPresets() {
+            const grid = document.getElementById('preset-grid');
+            grid.innerHTML = '';
+            for (const preset of PRESETS) {
+                const btn = document.createElement('button');
+                btn.className = 'preset-btn';
+                btn.innerHTML = `<span class="icon">${preset.icon}</span>${preset.nameZh}`;
+                btn.addEventListener('click', () => {
+                    pushUndo();
+                    for (const [id, val] of Object.entries(preset.values)) {
+                        const p = getParam(id);
+                        if (p) p.value = val;
+                    }
+                    rebuildShapeParams();
+                    applyDeform();
+                    updateSliders();
+                    updateRegionBadges();
+                });
+                grid.appendChild(btn);
+            }
+        }
+
+        // =============================================
+        // FILE HANDLING
+        // =============================================
+
+        function loadUVFile(file) {
+            document.getElementById('upload-overlay').classList.add('hidden');
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('loading-text').textContent = '加载 UV 纹理...';
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const tex = new THREE.Texture(img);
+                    tex.colorSpace = THREE.SRGBColorSpace;
+                    tex.flipY = true;
+                    tex.needsUpdate = true;
+                    createHeadMesh(tex);
+                    document.getElementById('loading').classList.remove('active');
+                    // Reset surgery params
+                    REGIONS.forEach(r => r.params.forEach(p => p.value = 0));
+                    rebuildShapeParams();
+                    updateSliders();
+                    updateRegionBadges();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Drop zone
+        const dropArea = document.getElementById('drop-area');
+        ['dragenter', 'dragover'].forEach(e => document.addEventListener(e, ev => { ev.preventDefault(); dropArea.style.borderColor = 'var(--accent)'; }));
+        ['dragleave', 'drop'].forEach(e => document.addEventListener(e, ev => { ev.preventDefault(); dropArea.style.borderColor = ''; }));
+        document.addEventListener('drop', e => { const f = e.dataTransfer?.files[0]; if (f?.type.startsWith('image/')) loadUVFile(f); });
+        dropArea.addEventListener('click', () => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.onchange = () => { if (inp.files[0]) loadUVFile(inp.files[0]); }; inp.click(); });
+
+        // Auto-load from URL
+        const urlParams = new URLSearchParams(location.search);
+        if (urlParams.get('uv')) {
+            document.getElementById('upload-overlay').classList.add('hidden');
+            document.getElementById('loading').classList.add('active');
+            const loader = new THREE.TextureLoader();
+            loader.load(urlParams.get('uv'), tex => {
+                tex.colorSpace = THREE.SRGBColorSpace; tex.flipY = true;
+                createHeadMesh(tex);
+                document.getElementById('loading').classList.remove('active');
+            });
+        }
+
+        // =============================================
+        // TOOLBAR ACTIONS
+        // =============================================
+
+        document.getElementById('btn-upload').addEventListener('click', () => {
+            document.getElementById('upload-overlay').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-undo').addEventListener('click', popUndo);
+        document.getElementById('btn-redo').addEventListener('click', popRedo);
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            pushUndo();
+            REGIONS.forEach(r => r.params.forEach(p => p.value = 0));
+            rebuildShapeParams();
+            applyDeform();
+            updateSliders();
+            updateRegionBadges();
+        });
+
+        document.getElementById('btn-reset-region').addEventListener('click', () => {
+            if (!activeRegionId) return;
+            pushUndo();
+            const r = REGIONS.find(r => r.id === activeRegionId);
+            if (r) r.params.forEach(p => p.value = 0);
+            rebuildShapeParams();
+            applyDeform();
+            updateSliders();
+            updateRegionBadges();
+        });
+
+        document.getElementById('btn-compare').addEventListener('click', () => {
+            comparing = !comparing;
+            document.getElementById('btn-compare').classList.toggle('active', comparing);
+            document.getElementById('comparison-slider').style.display = comparing ? 'block' : 'none';
+            document.getElementById('label-before').style.display = comparing ? 'block' : 'none';
+            document.getElementById('label-after').style.display = comparing ? 'block' : 'none';
+            if (comparing) {
+                document.getElementById('comparison-slider').style.left = '50%';
+            }
+        });
+
+        document.getElementById('btn-symmetry').addEventListener('click', () => {
+            symmetry = !symmetry;
+            document.getElementById('btn-symmetry').classList.toggle('active', symmetry);
+        });
+
+        document.getElementById('btn-linked').addEventListener('click', () => {
+            linkedMode = !linkedMode;
+            const btn = document.getElementById('btn-linked');
+            btn.textContent = linkedMode ? '🔒 联动' : '🔓 独立';
+            btn.classList.toggle('active', linkedMode);
+            document.getElementById('mode-display').textContent = linkedMode ? '联动模式' : '独立模式';
+            // Re-apply with new mode
+            rebuildShapeParams();
+            applyDeform();
+        });
+
+        document.getElementById('btn-screenshot').addEventListener('click', () => {
+            renderer.render(scene, camera);
+            const link = document.createElement('a');
+            link.download = `facevr-${Date.now()}.png`;
+            link.href = renderer.domElement.toDataURL('image/png');
+            link.click();
+        });
+
+        document.getElementById('btn-save').addEventListener('click', () => {
+            const data = { regions: REGIONS.map(r => ({ id: r.id, params: r.params.map(p => ({ id: p.id, value: p.value })) })) };
+            localStorage.setItem('facevr-plan', JSON.stringify(data));
+            document.getElementById('server-status').textContent = '已保存';
+            setTimeout(() => { document.getElementById('server-status').textContent = '就绪'; }, 2000);
+        });
+
+        document.getElementById('btn-export').addEventListener('click', () => {
+            const data = { shapeParams, regions: REGIONS.map(r => ({ id: r.id, params: r.params.map(p => ({ id: p.id, value: p.value, nameZh: p.nameZh })) })) };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.download = `facevr-params-${Date.now()}.json`;
+            link.href = URL.createObjectURL(blob);
+            link.click();
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'z') { e.preventDefault(); popUndo(); }
+            if (e.ctrlKey && e.key === 'y') { e.preventDefault(); popRedo(); }
+            if (e.key === 'r' && !e.ctrlKey) { document.getElementById('btn-reset').click(); }
+            if (e.key === 'l' && !e.ctrlKey) { document.getElementById('btn-linked').click(); }
+        });
+
+        // Load saved plan
+        try {
+            const saved = JSON.parse(localStorage.getItem('facevr-plan') || '');
+            if (saved?.regions) {
+                for (const sr of saved.regions) {
+                    const r = REGIONS.find(r => r.id === sr.id);
+                    if (r) for (const sp of sr.params) { const p = r.params.find(p => p.id === sp.id); if (p) p.value = sp.value; }
+                }
+                rebuildShapeParams();
+            }
+        } catch { }
+
+        // =============================================
+        // RENDER LOOP
+        // =============================================
+
+        function resize() {
+            const w = viewport.clientWidth, h = viewport.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(window.devicePixelRatio);
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        let frameCount = 0, lastFPSTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFPSTime > 1000) {
+                document.getElementById('fps-display').textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastFPSTime = now;
+            }
+        }
+
+        // INIT
+        buildRegionList();
+        buildPresets();
+        animate();
+    </script>
+</body>
+
+</html>
