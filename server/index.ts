@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3001;
-const FREEUV_GPU_URL = 'http://jp-tyo-bgp-1.ofalias.net:60136';
+const FREEUV_GPU_URL = 'http://22b4dff0f031.ofalias.com:56058';
 const WS_TOKEN_SECRET = process.env.WS_TOKEN_SECRET || 'facevr-dev-secret';
 const JOBS_DIR = path.join(__dirname, 'jobs');
 
